@@ -1,8 +1,10 @@
 <?php
 namespace App\Http\Controllers;
+
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 class CrudController extends Controller
 {
@@ -86,81 +88,108 @@ class CrudController extends Controller
         return $data[$menu];
     }
 
+    // Mengambil pilihan untuk dropdown
     private function getOptions($menu)
     {
         $options = [];
 
         if ($menu == 'user') {
-            $options['idrole'] = DB::table('role')
-                ->get(['idrole', 'nama_role']);
+            $options['idrole'] = DB::select(
+                "SELECT idrole, nama_role FROM role"
+            );
         }
 
         if ($menu == 'barang') {
-            $options['idsatuan'] = DB::table('satuan')
-                ->get(['idsatuan', 'nama_satuan']);
+            $options['idsatuan'] = DB::select(
+                "SELECT idsatuan, nama_satuan FROM satuan"
+            );
         }
 
         if ($menu == 'margin') {
-            $options['iduser'] = DB::table('user')
-                ->get(['iduser', 'username']);
+            $options['iduser'] = DB::select(
+                "SELECT iduser, username FROM user"
+            );
         }
 
         return $options;
     }
 
-   public function index($menu)
-{
-    $config = $this->config($menu);
+    // Menampilkan data
+    public function index(Request $request, $menu)
+    {
+        $config = $this->config($menu);
 
-    $data = DB::table($config['view'])->paginate(10);
+        $perPage = 10;
+        $page = max(1, LengthAwarePaginator::resolveCurrentPage());
+        $offset = ($page - 1) * $perPage;
 
-    $columns = [
-        'role' => [
-            'idrole' => 'ID',
-            'nama_role' => 'Nama Role'
-        ],
-        'satuan' => [
-            'idsatuan' => 'ID',
-            'nama_satuan' => 'Nama Satuan',
-            'status_keterangan' => 'Status'
-        ],
-        'vendor' => [
-            'idvendor' => 'ID',
-            'nama_vendor' => 'Nama Vendor',
-            'badan_hukum' => 'Badan Hukum',
-            'status' => 'Status'
-        ],
-        'user' => [
-            'iduser' => 'ID',
-            'username' => 'Username',
-            'idrole' => 'ID Role',
-            'nama_role' => 'Nama Role'
-        ],
-        'barang' => [
-            'idbarang' => 'ID',
-            'nama_barang' => 'Nama Barang',
-            'jenis' => 'Jenis',
-            'harga' => 'Harga',
-            'status_keterangan' => 'Status',
-            'nama_satuan' => 'Satuan'
-        ],
-        'margin' => [
-            'idmargin_penjualan' => 'ID',
-            'persen' => 'Persentase',
-            'status_keterangan' => 'Status',
-            'created_at' => 'Dibuat',
-            'updated_at' => 'Diubah',
-            'pembuat' => 'Pembuat'
-        ]
-    ];
+        $total = DB::select(
+            "SELECT COUNT(*) AS total FROM {$config['view']}"
+        )[0]->total;
 
-    return view('crud.index', [
-        'data' => $data,
-        'config' => $config,
-        'menu' => $menu,
-        'columns' => $columns[$menu]
-    ]);
-}
+        $rows = DB::select(
+            "SELECT * FROM {$config['view']} LIMIT ? OFFSET ?",
+            [$perPage, $offset]
+        );
+
+        $data = new LengthAwarePaginator(
+            $rows,
+            $total,
+            $perPage,
+            $page,
+            [
+                'path' => $request->url(),
+                'query' => $request->query()
+            ]
+        );
+
+        $columns = [
+            'role' => [
+                'idrole' => 'ID',
+                'nama_role' => 'Nama Role'
+            ],
+            'satuan' => [
+                'idsatuan' => 'ID',
+                'nama_satuan' => 'Nama Satuan',
+                'status_keterangan' => 'Status'
+            ],
+            'vendor' => [
+                'idvendor' => 'ID',
+                'nama_vendor' => 'Nama Vendor',
+                'badan_hukum' => 'Badan Hukum',
+                'status' => 'Status'
+            ],
+            'user' => [
+                'iduser' => 'ID',
+                'username' => 'Username',
+                'idrole' => 'ID Role',
+                'nama_role' => 'Nama Role'
+            ],
+            'barang' => [
+                'idbarang' => 'ID',
+                'nama_barang' => 'Nama Barang',
+                'jenis' => 'Jenis',
+                'harga' => 'Harga',
+                'status_keterangan' => 'Status',
+                'nama_satuan' => 'Satuan'
+            ],
+            'margin' => [
+                'idmargin_penjualan' => 'ID',
+                'persen' => 'Persentase',
+                'status_keterangan' => 'Status',
+                'created_at' => 'Dibuat',
+                'updated_at' => 'Diubah',
+                'pembuat' => 'Pembuat'
+            ]
+        ];
+
+        return view('crud.index', [
+            'data' => $data,
+            'config' => $config,
+            'menu' => $menu,
+            'columns' => $columns[$menu]
+        ]);
+    }
 
     public function create($menu)
     {
@@ -179,7 +208,6 @@ class CrudController extends Controller
     public function store(Request $request, $menu)
     {
         $config = $this->config($menu);
-
         $fields = array_keys($config['fields']);
 
         $rules = [];
@@ -192,8 +220,7 @@ class CrudController extends Controller
             $rules['password'] = 'required|min:6';
         }
 
-        if ($menu == 'satuan' || $menu == 'vendor'
-            || $menu == 'barang' || $menu == 'margin') {
+        if (in_array($menu, ['satuan', 'vendor', 'barang', 'margin'])) {
             $rules['status'] = 'required|in:0,1';
         }
 
@@ -205,22 +232,37 @@ class CrudController extends Controller
             $insert['password'] = Hash::make($request->password);
         }
 
-        DB::table($config['table'])->insert($insert);
+        $columns = array_keys($insert);
+        $values = array_values($insert);
+        $placeholders = implode(', ', array_fill(0, count($columns), '?'));
+
+        $columnList = implode(', ', $columns);
+
+        DB::insert(
+            "INSERT INTO {$config['table']} ($columnList)
+             VALUES ($placeholders)",
+            $values
+        );
 
         return redirect()
             ->route('crud.index', $menu)
             ->with('success', 'Data berhasil ditambahkan.');
     }
 
+    // Form edit data
     public function edit($menu, $id)
     {
         $config = $this->config($menu);
 
-        $item = DB::table($config['table'])
-            ->where($config['pk'], $id)
-            ->first();
+        $item = DB::select(
+            "SELECT * FROM {$config['table']}
+             WHERE {$config['pk']} = ?",
+            [$id]
+        );
 
-        abort_if(!$item, 404);
+        abort_if(empty($item), 404);
+
+        $item = $item[0];
 
         $options = $this->getOptions($menu);
 
@@ -233,10 +275,10 @@ class CrudController extends Controller
         ]);
     }
 
+    // Memperbarui data
     public function update(Request $request, $menu, $id)
     {
         $config = $this->config($menu);
-
         $fields = array_keys($config['fields']);
 
         $rules = [];
@@ -249,8 +291,7 @@ class CrudController extends Controller
             $rules['password'] = 'nullable|min:6';
         }
 
-        if ($menu == 'satuan' || $menu == 'vendor'
-            || $menu == 'barang' || $menu == 'margin') {
+        if (in_array($menu, ['satuan', 'vendor', 'barang', 'margin'])) {
             $rules['status'] = 'required|in:0,1';
         }
 
@@ -266,22 +307,47 @@ class CrudController extends Controller
             }
         }
 
-        DB::table($config['table'])
-            ->where($config['pk'], $id)
-            ->update($update);
+        // Jika password kosong, jangan ikut diperbarui
+        if (empty($update)) {
+            return redirect()
+                ->route('crud.index', $menu)
+                ->with('success', 'Tidak ada perubahan data.');
+        }
+
+        $set = [];
+        $values = [];
+
+        foreach ($update as $column => $value) {
+            $set[] = "$column = ?";
+            $values[] = $value;
+        }
+
+        $values[] = $id;
+
+        $setList = implode(', ', $set);
+
+        DB::update(
+            "UPDATE {$config['table']}
+             SET $setList
+             WHERE {$config['pk']} = ?",
+            $values
+        );
 
         return redirect()
             ->route('crud.index', $menu)
             ->with('success', 'Data berhasil diubah.');
     }
 
+    // Menghapus data
     public function destroy($menu, $id)
     {
         $config = $this->config($menu);
 
-        DB::table($config['table'])
-            ->where($config['pk'], $id)
-            ->delete();
+        DB::delete(
+            "DELETE FROM {$config['table']}
+             WHERE {$config['pk']} = ?",
+            [$id]
+        );
 
         return redirect()
             ->route('crud.index', $menu)
