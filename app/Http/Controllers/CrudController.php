@@ -83,12 +83,9 @@ class CrudController extends Controller
             ]
         ];
 
-        abort_unless(isset($data[$menu]), 404);
-
         return $data[$menu];
     }
 
-    // Mengambil pilihan untuk dropdown
     private function getOptions($menu)
     {
         $options = [];
@@ -114,7 +111,6 @@ class CrudController extends Controller
         return $options;
     }
 
-    // Menampilkan data
     public function index(Request $request, $menu)
     {
         $config = $this->config($menu);
@@ -249,7 +245,6 @@ class CrudController extends Controller
             ->with('success', 'Data berhasil ditambahkan.');
     }
 
-    // Form edit data
     public function edit($menu, $id)
     {
         $config = $this->config($menu);
@@ -275,7 +270,6 @@ class CrudController extends Controller
         ]);
     }
 
-    // Memperbarui data
     public function update(Request $request, $menu, $id)
     {
         $config = $this->config($menu);
@@ -297,6 +291,21 @@ class CrudController extends Controller
 
         $request->validate($rules);
 
+        if ($menu == 'margin') {
+    DB::statement(
+        "CALL update_margin(?, ?, ?)",
+        [
+            $id,
+            $request->persen,
+            $request->status
+        ]
+    );
+
+    return redirect()
+        ->route('crud.index', $menu)
+        ->with('success', 'Margin berhasil diperbarui.');
+}
+
         $update = $request->only($fields);
 
         if ($menu == 'user') {
@@ -307,7 +316,6 @@ class CrudController extends Controller
             }
         }
 
-        // Jika password kosong, jangan ikut diperbarui
         if (empty($update)) {
             return redirect()
                 ->route('crud.index', $menu)
@@ -338,7 +346,6 @@ class CrudController extends Controller
             ->with('success', 'Data berhasil diubah.');
     }
 
-    // Menghapus data
     public function destroy($menu, $id)
     {
         $config = $this->config($menu);
